@@ -28,7 +28,6 @@ uenc = B.unpack . urlEncode False . B.pack
 
 data Stewbot = Stewbot { sess :: S.Session
                        , cid :: String
-                       , ckey :: String
                        } deriving Show
 
 data Item = Item { item_id :: String
@@ -109,11 +108,8 @@ makeBot = do
     let cid = parseResp
               (\x -> (x.:"bundle") >>= (.:"current_user") >>= (.:"personal_cart_id"))
               bundle
-    let ckey = parseResp
-               (\x -> (x.:"bundle") >>= (.:"cache_key"))
-               bundle
 
-    return Stewbot{sess,cid,ckey}
+    return Stewbot{sess,cid}
 
 addItems :: Stewbot -> [Item] -> IO (Response BL.ByteString)
 addItems Stewbot{sess,cid} items = do
@@ -129,8 +125,8 @@ runSearch bot fname =
     where body = fmap concat . join $ (mapM (search bot) . lines) <$> readFile fname
 
 search :: Stewbot -> String -> IO (String)
-search Stewbot{sess,ckey} item = do
-    res <- S.get sess (insta $ "v3/containers/wegmans/search_v3/" ++ uenc item ++ "?cache_key=" ++ ckey)
+search Stewbot{sess} item = do
+    res <- S.get sess (insta $ "v3/containers/wegmans/search_v3/" ++ uenc item)
     -- putStrLn . BL.unpack $ res ^. responseBody
     return $ concat
         [ "<div class='items'>"
