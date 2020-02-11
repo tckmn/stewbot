@@ -2,26 +2,62 @@
 {-# LANGUAGE NamedFieldPuns #-}
 
 module Stewbot (
-    makeBot, testeroni
+    makeBot, addItems, runSearch, Item(Item), Replacement(..)
 ) where
 
-import Data.Maybe
+import Control.Lens hiding ((.=))
+import Control.Monad
+import Data.Aeson
 import Data.Aeson.Types
-import Control.Lens
+import Data.Maybe
+import Data.Quantities
 import Network.HTTP.Client.TLS (tlsManagerSettings)
+import Network.HTTP.Types (urlEncode)
 import Network.Wreq
 import System.Directory (doesFileExist)
-import qualified Data.ByteString as B
+import qualified Data.ByteString as B hiding (pack, unpack)
+import qualified Data.ByteString.Char8 as B (pack, unpack)
 import qualified Data.ByteString.Internal as B (c2w, w2c)
-import qualified Data.ByteString.Lazy as BL
+import qualified Data.ByteString.Lazy as BL hiding (pack, unpack)
+import qualified Data.ByteString.Lazy.Char8 as BL (pack, unpack)
 import qualified Network.Wreq.Session as S
-import Data.Aeson
 
 insta = ("https://www.instacart.com/" ++)
+uenc = B.unpack . urlEncode False . B.pack
 
 data Stewbot = Stewbot { sess :: S.Session
                        , cid :: String
                        } deriving Show
+
+data Item = Item { item_id :: String
+                 , quantity :: Int
+                 , repl :: Replacement
+                 } deriving Show
+instance ToJSON Item where
+    toJSON Item{item_id,quantity,repl} = object $
+        (case repl of
+           Best    -> []
+           No      -> ["replacement_policy".=no]
+           Use rid -> ["replacement_policy".=use, "replacement_item_id".=rid]
+        ) ++ ["item_id".=item_id, "quantity".=quantity]
+            where no  = "no_replacements" :: String
+                  use = "users_choice"    :: String
+
+data Replacement = Best | No | Use Int deriving Show
+
+data SearchResult = SearchResult { search_id :: String
+                                 , name :: String
+                                 , size :: String
+                                 , image :: String
+                                 , price :: String
+                                 } deriving Show
+instance FromJSON SearchResult where
+    parseJSON (Object v) = SearchResult <$>
+        v .: "id" <*>
+        v .: "name" <*>
+        v .: "size" <*>
+        (v .: "image" >>= (.: "url")) <*>
+        (v .: "pricing" >>= (.: "price"))
 
 -- needed for login
 -- should be able to find this in source code of instacart homepage, if something changes
@@ -45,6 +81,10 @@ login sess = do
         ]
     return sess
 
+parseResp :: (Object -> Parser a) -> Response BL.ByteString -> a
+parseResp x = fromJust . parseMaybe x . decodeObj
+    where decodeObj = fromJust . decode . (^. responseBody)
+
 makeBot :: IO (Stewbot)
 makeBot = do
     haveSession <- doesFileExist "session"
@@ -59,16 +99,47 @@ makeBot = do
     bundle <- S.putWith
         (defaults & header "X-Requested-With" .~ ["XMLHttpRequest"])
         sess (insta "v3/initial_bundle") B.empty
-    cid <- return . fromJust $
-        parseMaybe (\x -> (x.:"bundle") >>= (.:"current_user") >>= (.:"personal_cart_id"))
-        (fromJust . decode $ bundle ^. responseBody :: Object)
+    let cid = parseResp
+              (\x -> (x.:"bundle") >>= (.:"current_user") >>= (.:"personal_cart_id"))
+              bundle
 
-    return Stewbot { sess, cid }
+    return Stewbot{sess,cid}
 
-testeroni :: Stewbot -> IO String
-testeroni Stewbot{sess,cid} = return cid
+addItems :: Stewbot -> [Item] -> IO (Response BL.ByteString)
+addItems Stewbot{sess,cid} items = do
+    S.putWith
+        (defaults & header "X-Requested-With" .~ ["XMLHttpRequest"]
+                  & header "Content-Type" .~ ["application/json"])
+        sess (insta $ "v3/carts/" ++ cid ++ "/update_items")
+        (BL.concat ["{\"items\":",encode items,"}"])
 
--- addItem :: S.Session -> IO (Response BL.ByteString)
--- addItem = do
---     S.post sess (insta "v3/carts/" ++ TODO ++ "/update_items") [
---         ]
+runSearch :: Stewbot -> String -> IO (String)
+runSearch bot fname =
+    concat <$> sequence [readFile "head.html", body, pure "</body></html>"]
+    where body = fmap concat . join $ (mapM (search bot) . lines) <$> readFile fname
+
+search :: Stewbot -> String -> IO (String)
+search Stewbot{sess,cid} item = do
+    res <- S.get sess (insta $ "v3/containers/wegmans/search_v3/" ++ uenc item)
+    putStrLn . BL.unpack $ res ^. responseBody
+    return $ concat
+        [ "<div class='items'>"
+        , "<h2>"++item++"</h2>"
+        , concat $ render <$> parseResp parser res
+        , "</div>"
+        ]
+    where parser x = (x.:"container") >>= (.:"modules")
+          <&> (!!1)
+          >>= (.:"data") >>= (.:"items") :: Parser [SearchResult]
+
+render :: SearchResult -> String
+render SearchResult{search_id,name,size,image,price} = concat
+    [ "<div class='item' data-id='"++search_id++"'>"
+    , "<div class='imgcont'>"
+    , "<p>"++price++"</p>"
+    , "<p>"++size++"</p>"
+    , "<img src='"++image++"'>"
+    , "</div>"
+    , "<div class='namcont'>"++name++"</div>"
+    , "</div>"
+    ]
