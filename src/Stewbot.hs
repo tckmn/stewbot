@@ -11,6 +11,7 @@ import Data.Aeson
 import Data.Aeson.Types
 import Data.Maybe
 import Data.Quantities
+import Data.List
 import Network.HTTP.Client.TLS (tlsManagerSettings)
 import Network.HTTP.Types (urlEncode)
 import Network.Wreq
@@ -27,6 +28,7 @@ uenc = B.unpack . urlEncode False . B.pack
 
 data Stewbot = Stewbot { sess :: S.Session
                        , cid :: String
+                       , ckey :: String
                        } deriving Show
 
 data Item = Item { item_id :: String
@@ -50,6 +52,8 @@ data SearchResult = SearchResult { search_id :: String
                                  , size :: String
                                  , image :: String
                                  , price :: String
+                                 , prev :: Bool
+                                 , feat :: Bool
                                  } deriving Show
 instance FromJSON SearchResult where
     parseJSON (Object v) = SearchResult <$>
@@ -57,7 +61,10 @@ instance FromJSON SearchResult where
         v .: "name" <*>
         v .: "size" <*>
         (v .: "image" >>= (.: "url")) <*>
-        (v .: "pricing" >>= (.: "price"))
+        (v .: "pricing" >>= (.: "price")) <*>
+        (elem "previously_purchased" <$> attr) <*>
+        (elem "featured_badge_gray" <$> attr)
+            where attr = v .: "attributes" :: Parser [String]
 
 -- needed for login
 -- should be able to find this in source code of instacart homepage, if something changes
@@ -102,8 +109,11 @@ makeBot = do
     let cid = parseResp
               (\x -> (x.:"bundle") >>= (.:"current_user") >>= (.:"personal_cart_id"))
               bundle
+    let ckey = parseResp
+               (\x -> (x.:"bundle") >>= (.:"cache_key"))
+               bundle
 
-    return Stewbot{sess,cid}
+    return Stewbot{sess,cid,ckey}
 
 addItems :: Stewbot -> [Item] -> IO (Response BL.ByteString)
 addItems Stewbot{sess,cid} items = do
@@ -119,9 +129,9 @@ runSearch bot fname =
     where body = fmap concat . join $ (mapM (search bot) . lines) <$> readFile fname
 
 search :: Stewbot -> String -> IO (String)
-search Stewbot{sess,cid} item = do
-    res <- S.get sess (insta $ "v3/containers/wegmans/search_v3/" ++ uenc item)
-    putStrLn . BL.unpack $ res ^. responseBody
+search Stewbot{sess,ckey} item = do
+    res <- S.get sess (insta $ "v3/containers/wegmans/search_v3/" ++ uenc item ++ "?cache_key=" ++ ckey)
+    -- putStrLn . BL.unpack $ res ^. responseBody
     return $ concat
         [ "<div class='items'>"
         , "<h2>"++item++"</h2>"
@@ -129,12 +139,15 @@ search Stewbot{sess,cid} item = do
         , "</div>"
         ]
     where parser x = (x.:"container") >>= (.:"modules")
-          <&> (!!1)
-          >>= (.:"data") >>= (.:"items") :: Parser [SearchResult]
+                 >>= (filterM (\x -> (isPrefixOf "search_result_set") <$> x.:"id"))
+                 <&> head
+                 >>= (.:"data") >>= (.:"items") :: Parser [SearchResult]
 
 render :: SearchResult -> String
-render SearchResult{search_id,name,size,image,price} = concat
+render SearchResult{search_id,name,size,image,price,prev,feat} = concat
     [ "<div class='item' data-id='"++search_id++"'>"
+    , if prev then "<div class='prev'>&nbsp;</div>" else ""
+    , if feat then "<div class='feat'>&nbsp;</div>" else ""
     , "<div class='imgcont'>"
     , "<p>"++price++"</p>"
     , "<p>"++size++"</p>"
