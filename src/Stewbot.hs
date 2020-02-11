@@ -9,18 +9,21 @@ import Control.Lens hiding ((.=))
 import Control.Monad
 import Data.Aeson
 import Data.Aeson.Types
+import Data.Function
 import Data.List
 import Data.Maybe
 import Data.Quantities
 import Network.HTTP.Client.TLS (tlsManagerSettings)
 import Network.HTTP.Types (urlEncode)
 import Network.Wreq
+import Numeric
 import System.Directory (doesFileExist)
 import qualified Data.ByteString as B hiding (pack, unpack)
 import qualified Data.ByteString.Char8 as B (pack, unpack)
 import qualified Data.ByteString.Internal as B (c2w, w2c)
 import qualified Data.ByteString.Lazy as BL hiding (pack, unpack)
 import qualified Data.ByteString.Lazy.Char8 as BL (pack, unpack)
+import qualified Data.Map.Strict as M
 import qualified Network.Wreq.Session as S
 
 insta = ("https://www.instacart.com/" ++)
@@ -32,6 +35,9 @@ deparen = flip helper 0
           helper (')':s) n = helper s (n-1)
           helper (c:s)   0 = c:helper s 0
           helper (c:s)   n = helper s n
+hush :: Either a b -> Maybe b
+hush (Right x) = Just x
+hush _         = Nothing
 
 data Stewbot = Stewbot { sess :: S.Session
                        , cid :: String
@@ -41,6 +47,7 @@ data Item = Item { item_id :: String
                  , quantity :: Int
                  , repl :: Replacement
                  } deriving Show
+
 instance ToJSON Item where
     toJSON Item{item_id,quantity,repl} = object $
         (case repl of
@@ -53,6 +60,16 @@ instance ToJSON Item where
 
 data Replacement = Best | No | Use Int deriving Show
 
+quant = fromString' d'
+    where (Right d') = readDefinitions $ unlines
+                        [ defaultDefString
+                        , "gal = gallon"
+                        , "qt = quart"
+                        , "fl = floz/oz"
+                        , "ct = 1"
+                        ]
+type Quant = Either (QuantityError Double) (Quantity Double)
+
 data SearchResult = SearchResult { search_id :: String
                                  , name :: String
                                  , size :: String
@@ -60,17 +77,26 @@ data SearchResult = SearchResult { search_id :: String
                                  , price :: String
                                  , prev :: Bool
                                  , feat :: Bool
+                                 , efficiency :: Quant
                                  } deriving Show
+
 instance FromJSON SearchResult where
     parseJSON (Object v) = SearchResult <$>
         v .: "id" <*>
         v .: "name" <*>
         v .: "size" <*>
         (v .: "image" >>= (.: "url")) <*>
-        (v .: "pricing" >>= (.: "price")) <*>
+        price <*>
         (elem "previously_purchased" <$> attr) <*>
-        (elem "featured_badge_gray" <$> attr)
+        (elem "featured_badge_gray" <$> attr) <*>
+        (liftM2 (((convertBase <$>) .) . liftM2 divideQuants)
+                (quant . tail <$> price)
+                (quant . patch <$> size))
             where attr = v .: "attributes" :: Parser [String]
+                  size = v .: "size"
+                  price = v .: "pricing" >>= (.: "price")
+                  patch ""    = ""
+                  patch (c:s) = (if c=='x' then '*' else c):patch s
 
 -- needed for login
 -- should be able to find this in source code of instacart homepage, if something changes
@@ -133,12 +159,22 @@ runSearch bot fname =
 
 search :: Stewbot -> String -> IO (String)
 search Stewbot{sess} item = do
-    res <- S.get sess (insta $ "v3/containers/wegmans/search_v3/" ++ (uenc $ deparen item))
-    -- putStrLn . BL.unpack $ res ^. responseBody
+    req <- S.get sess (insta $ "v3/containers/wegmans/search_v3/" ++ (uenc $ deparen item))
+    let res = parseResp parser req
+
+    -- try to guess the correct units (based on the naive heuristic -- maybe improve?)
+    let guess = join $ fst <$> (M.lookupMax $ foldr f M.empty res)
+            where f x acc = M.insertWith (+) (units <$> hush (efficiency x)) 1 acc
+    -- now find the most efficient item with those units
+    let minid = search_id $ minimumBy (compare `on` safeEfficiency) res
+            where safeEfficiency SearchResult{efficiency} = case efficiency of
+                    Left _ -> 1/0
+                    Right val -> if or $ (units val ==) <$> guess then magnitude val else 1/0
+
     return $ concat
         [ "<div class='items'>"
         , "<h2>"++item++"</h2>"
-        , concat $ render <$> parseResp parser res
+        , concat $ render minid <$> res
         , "</div>"
         ]
     where parser x = (x.:"container") >>= (.:"modules")
@@ -146,8 +182,8 @@ search Stewbot{sess} item = do
                  <&> head
                  >>= (.:"data") >>= (.:"items") :: Parser [SearchResult]
 
-render :: SearchResult -> String
-render SearchResult{search_id,name,size,image,price,prev,feat} = concat
+render :: String -> SearchResult -> String
+render best SearchResult{search_id,name,size,image,price,prev,feat,efficiency} = concat
     [ "<div class='item' data-id='"++search_id++"'>"
     , if prev then "<div class='prev'>&nbsp;</div>" else ""
     , if feat then "<div class='feat'>&nbsp;</div>" else ""
@@ -157,5 +193,13 @@ render SearchResult{search_id,name,size,image,price,prev,feat} = concat
     , "<img src='"++image++"'>"
     , "</div>"
     , "<div class='namcont'>"++name++"</div>"
+    , "<div class='effcont'>"++(case efficiency of
+                  Left err -> show err
+                  Right val -> showEFloat (Just 2)
+                               (magnitude val)
+                               (concat . words . show $ units val)
+               )++(if search_id == best then
+                  "<span class='best'>best</span>" else ""
+               )++"</div>"
     , "</div>"
     ]
