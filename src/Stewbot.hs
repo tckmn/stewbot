@@ -9,9 +9,9 @@ import Control.Lens hiding ((.=))
 import Control.Monad
 import Data.Aeson
 import Data.Aeson.Types
+import Data.List
 import Data.Maybe
 import Data.Quantities
-import Data.List
 import Network.HTTP.Client.TLS (tlsManagerSettings)
 import Network.HTTP.Types (urlEncode)
 import Network.Wreq
@@ -25,6 +25,13 @@ import qualified Network.Wreq.Session as S
 
 insta = ("https://www.instacart.com/" ++)
 uenc = B.unpack . urlEncode False . B.pack
+deparen :: String -> String
+deparen = flip helper 0
+    where helper []      _ = []
+          helper ('(':s) n = helper s (n+1)
+          helper (')':s) n = helper s (n-1)
+          helper (c:s)   0 = c:helper s 0
+          helper (c:s)   n = helper s n
 
 data Stewbot = Stewbot { sess :: S.Session
                        , cid :: String
@@ -126,7 +133,7 @@ runSearch bot fname =
 
 search :: Stewbot -> String -> IO (String)
 search Stewbot{sess} item = do
-    res <- S.get sess (insta $ "v3/containers/wegmans/search_v3/" ++ uenc item)
+    res <- S.get sess (insta $ "v3/containers/wegmans/search_v3/" ++ (uenc $ deparen item))
     -- putStrLn . BL.unpack $ res ^. responseBody
     return $ concat
         [ "<div class='items'>"
