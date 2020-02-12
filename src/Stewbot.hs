@@ -89,14 +89,16 @@ instance FromJSON SearchResult where
         price <*>
         (elem "previously_purchased" <$> attr) <*>
         (elem "featured_badge_gray" <$> attr) <*>
-        (liftM2 (((convertBase <$>) .) . liftM2 divideQuants)
-                (quant . tail <$> price)
-                (quant . patch <$> size))
-            where attr = v .: "attributes" :: Parser [String]
-                  size = v .: "size"
-                  price = v .: "pricing" >>= (.: "price")
-                  patch ""    = ""
-                  patch (c:s) = (if c=='x' then '*' else c):patch s
+        do price <- price; size <- size
+           return $ convertBase <$>
+               if "At $" `isPrefixOf` size
+                  then quant $ drop 4 size
+                  else liftM2 divideQuants (quant $ tail price) (quant $ patch size)
+        where attr = v .: "attributes" :: Parser [String]
+              size = v .: "size"
+              price = v .: "pricing" >>= (.: "price")
+              patch ""    = ""
+              patch (c:s) = (if c=='x' then '*' else c):patch s
 
 -- needed for login
 -- should be able to find this in source code of instacart homepage, if something changes
