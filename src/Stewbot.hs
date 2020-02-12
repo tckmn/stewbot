@@ -154,7 +154,7 @@ addItems Stewbot{sess,cid} items = do
 
 runSearch :: Stewbot -> String -> IO (String)
 runSearch bot fname =
-    concat <$> sequence [readFile "head.html", body, pure "</body></html>"]
+    concat <$> sequence [readFile "head.html", body, pure "</main></body></html>"]
     where body = fmap concat . join $ (mapM (search bot) . lines) <$> readFile fname
 
 search :: Stewbot -> String -> IO (String)
@@ -174,8 +174,9 @@ search Stewbot{sess} item = do
     return $ concat
         [ "<div class='items'>"
         , "<h2>"++item++"</h2>"
+        , "<div class='itemswrap'>"
         , concat $ render minid <$> res
-        , "</div>"
+        , "</div></div>"
         ]
     where parser x = (x.:"container") >>= (.:"modules")
                  >>= (filterM (\x -> (isPrefixOf "search_result_set") <$> x.:"id"))
@@ -183,8 +184,8 @@ search Stewbot{sess} item = do
                  >>= (.:"data") >>= (.:"items") :: Parser [SearchResult]
 
 render :: String -> SearchResult -> String
-render best SearchResult{search_id,name,size,image,price,prev,feat,efficiency} = concat
-    [ "<div class='item' data-id='"++search_id++"'>"
+render minid SearchResult{search_id,name,size,image,price,prev,feat,efficiency} = concat
+    [ "<div class='item"++(best " chosen")++"' data-id='"++search_id++"'>"
     , if prev then "<div class='prev'>&nbsp;</div>" else ""
     , if feat then "<div class='feat'>&nbsp;</div>" else ""
     , "<div class='imgcont'>"
@@ -198,8 +199,7 @@ render best SearchResult{search_id,name,size,image,price,prev,feat,efficiency} =
                   Right val -> showEFloat (Just 2)
                                (magnitude val)
                                (concat . words . show $ units val)
-               )++(if search_id == best then
-                  "<span class='best'>best</span>" else ""
-               )++"</div>"
+               )++(best "<span class='best'>best</span>")++"</div>"
     , "</div>"
     ]
+        where best s = if search_id == minid then s else ""
