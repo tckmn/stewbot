@@ -91,6 +91,15 @@ window.addEventListener('load', function() {
             case 'G':
                 tryMove(active.parentNode.lastChild);
                 break;
+            case 'Backspace':
+            case 'Delete':
+            case 'd':
+            case 'x':
+                // TODO tell the server to delet
+                break;
+            case 'Escape':
+                // TODO e x p a n d the current item
+                break;
             default: return;
         }
         e.preventDefault();

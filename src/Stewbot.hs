@@ -28,6 +28,10 @@ import qualified Network.Wreq.Session as S
 
 insta = ("https://www.instacart.com/" ++)
 uenc = B.unpack . urlEncode False . B.pack
+readData      = readFile      . ("data/"++)
+readDataBL    = BL.readFile   . ("data/"++)
+writeData     = writeFile     . ("data/"++)
+doesDataExist = doesFileExist . ("data/"++)
 
 -- removes parentheses and excess spaces
 normalize :: String -> String
@@ -117,7 +121,7 @@ csrfToken sess = extractToken <$> findToken <$> S.get sess (insta "")
 login :: S.Session -> IO (S.Session)
 login sess = do
     token <- csrfToken sess
-    creds <- lines <$> readFile "credentials"
+    creds <- lines <$> readData "credentials"
     S.post sess (insta "v3/dynamic_data/authenticate/login") [
         "authenticity_token" := token,
         "grant_type" := ("password" :: B.ByteString),
@@ -132,12 +136,12 @@ parseResp x = fromJust . parseMaybe x . decodeObj
 
 makeBot :: IO (Stewbot)
 makeBot = do
-    haveSession <- doesFileExist "session"
+    haveSession <- doesDataExist "session"
     sess <- if haveSession
-       then read <$> readFile "session" >>= flip S.newSessionControl tlsManagerSettings
+       then read <$> readData "session" >>= flip S.newSessionControl tlsManagerSettings
        else do
            sess <- S.newSession >>= login
-           writeFile "session" . show =<< S.getSessionCookieJar sess
+           writeData "session" . show =<< S.getSessionCookieJar sess
            return sess
 
     -- find cart id from initial_bundle xhr
@@ -149,9 +153,9 @@ makeBot = do
               bundle
 
     -- read file for things to exclude from search results
-    haveExclude <- doesFileExist "exclude"
+    haveExclude <- doesDataExist "exclude"
     exclude <- fromMaybe M.empty <$> if haveExclude
-                                        then decode <$> BL.readFile "exclude"
+                                        then decode <$> readDataBL "exclude"
                                         else mempty
 
     return Stewbot{sess,cid,exclude}
@@ -167,7 +171,7 @@ addItems Stewbot{sess,cid} items = do
 runSearch :: Stewbot -> String -> IO (String)
 runSearch bot fname =
     concat <$> sequence [readFile "head.html", body, pure "</main></body></html>"]
-    where body = fmap concat . join $ (mapM (search bot) . lines) <$> readFile fname
+    where body = fmap concat . join $ (mapM (search bot) . lines) <$> readData fname
 
 search :: Stewbot -> String -> IO (String)
 search Stewbot{sess,exclude} item' = do
