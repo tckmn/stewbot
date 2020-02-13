@@ -49,6 +49,7 @@ hush _         = Nothing
 data Stewbot = Stewbot { sess :: S.Session
                        , cid :: String
                        , exclude :: M.Map String [String]
+                       , choice :: M.Map String String
                        } deriving Show
 
 data Item = Item { item_id :: String
@@ -153,12 +154,16 @@ makeBot = do
               bundle
 
     -- read file for things to exclude from search results
-    haveExclude <- doesDataExist "exclude"
-    exclude <- fromMaybe M.empty <$> if haveExclude
-                                        then decode <$> readDataBL "exclude"
-                                        else mempty
+    exclude <- decodeData "exclude"
 
-    return Stewbot{sess,cid,exclude}
+    -- and the one for things we got last time
+    choice <- decodeData "choice"
+
+    return Stewbot{sess,cid,exclude,choice}
+
+    where decodeData fname = do
+            exists <- doesDataExist fname
+            fromMaybe M.empty <$> if exists then decode <$> readDataBL fname else mempty
 
 addItems :: Stewbot -> [Item] -> IO (Response BL.ByteString)
 addItems Stewbot{sess,cid} items = do
@@ -174,7 +179,7 @@ runSearch bot fname =
     where body = fmap concat . join $ (mapM (search bot) . lines) <$> readData fname
 
 search :: Stewbot -> String -> IO (String)
-search Stewbot{sess,exclude} item' = do
+search Stewbot{sess,exclude,choice} item' = do
     let item = normalize item'
     req <- S.get sess (insta $ "v3/containers/wegmans/search_v3/" ++ uenc item)
 
@@ -196,7 +201,7 @@ search Stewbot{sess,exclude} item' = do
         [ "<div class='items'>"
         , "<h2>"++item++"</h2>"
         , "<div class='itemswrap'>"
-        , concat $ render minid <$> res
+        , concat $ render minid (M.lookup item choice) <$> res
         , "</div></div>"
         ]
     where parser x = (x.:"container") >>= (.:"modules")
@@ -204,10 +209,10 @@ search Stewbot{sess,exclude} item' = do
                  <&> head
                  >>= (.:"data") >>= (.:"items") :: Parser [SearchResult]
 
-render :: String -> SearchResult -> String
-render minid SearchResult{search_id,name,size,image,price,prev,feat,efficiency} = concat
+render :: String -> Maybe String -> SearchResult -> String
+render minid choid SearchResult{search_id,name,size,image,price,prev,feat,efficiency} = concat
     [ "<div class='item"
-    , best " chosen"
+    , good " chosen"
     , "' data-id='"++search_id++"'>"
     , if' prev "<div class='prev'>&nbsp;</div>"
     , if' feat "<div class='feat'>&nbsp;</div>"
@@ -217,14 +222,16 @@ render minid SearchResult{search_id,name,size,image,price,prev,feat,efficiency} 
     , "<img src='"++image++"'>"
     , "</div>"
     , "<div class='namcont'>"++name++"</div>"
-    , "<div class='effcont'>"++(case efficiency of
-                  Left err -> show err
-                  Right val -> showEFloat (Just 2)
-                               (magnitude val)
-                               (concat . words . show $ units val)
-               )++(best "<span class='best'>best</span>")++"</div>"
-    , "</div>"
+    , "<div class='effcont'>"
+    , case efficiency of
+        Left err  -> show err
+        Right val -> showEFloat (Just 2) (magnitude val) (concat . words . show $ units val)
+    , best "<span class='tag'>best</span>"
+    , chos "<span class='tag'>chosen</span>"
+    , "</div></div>"
     ]
         where if' True = id
               if' _    = pure ""
               best = if' $ search_id == minid
+              chos = if' $ or ((search_id ==) <$> choid)
+              good = if' $ search_id == fromMaybe minid choid
