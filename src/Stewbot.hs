@@ -205,8 +205,8 @@ render minid SearchResult{search_id,name,size,image,price,prev,feat,efficiency} 
     [ "<div class='item"
     , best " chosen"
     , "' data-id='"++search_id++"'>"
-    , if prev then "<div class='prev'>&nbsp;</div>" else ""
-    , if feat then "<div class='feat'>&nbsp;</div>" else ""
+    , if' prev "<div class='prev'>&nbsp;</div>"
+    , if' feat "<div class='feat'>&nbsp;</div>"
     , "<div class='imgcont'>"
     , "<p>"++price++"</p>"
     , "<p>"++size++"</p>"
@@ -221,4 +221,6 @@ render minid SearchResult{search_id,name,size,image,price,prev,feat,efficiency} 
                )++(best "<span class='best'>best</span>")++"</div>"
     , "</div>"
     ]
-        where best s = if search_id == minid then s else ""
+        where if' True = id
+              if' _    = pure ""
+              best = if' $ search_id == minid
