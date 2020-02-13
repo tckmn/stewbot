@@ -28,19 +28,23 @@ import qualified Network.Wreq.Session as S
 
 insta = ("https://www.instacart.com/" ++)
 uenc = B.unpack . urlEncode False . B.pack
-deparen :: String -> String
-deparen = flip helper 0
+
+-- removes parentheses and excess spaces
+normalize :: String -> String
+normalize = unwords . words . flip helper 0
     where helper []      _ = []
           helper ('(':s) n = helper s (n+1)
           helper (')':s) n = helper s (n-1)
           helper (c:s)   0 = c:helper s 0
           helper (c:s)   n = helper s n
+
 hush :: Either a b -> Maybe b
 hush (Right x) = Just x
 hush _         = Nothing
 
 data Stewbot = Stewbot { sess :: S.Session
                        , cid :: String
+                       , exclude :: M.Map String [String]
                        } deriving Show
 
 data Item = Item { item_id :: String
@@ -144,7 +148,13 @@ makeBot = do
               (\x -> (x.:"bundle") >>= (.:"current_user") >>= (.:"personal_cart_id"))
               bundle
 
-    return Stewbot{sess,cid}
+    -- read file for things to exclude from search results
+    haveExclude <- doesFileExist "exclude"
+    exclude <- fromMaybe M.empty <$> if haveExclude
+                                        then decode <$> BL.readFile "exclude"
+                                        else mempty
+
+    return Stewbot{sess,cid,exclude}
 
 addItems :: Stewbot -> [Item] -> IO (Response BL.ByteString)
 addItems Stewbot{sess,cid} items = do
@@ -160,13 +170,18 @@ runSearch bot fname =
     where body = fmap concat . join $ (mapM (search bot) . lines) <$> readFile fname
 
 search :: Stewbot -> String -> IO (String)
-search Stewbot{sess} item = do
-    req <- S.get sess (insta $ "v3/containers/wegmans/search_v3/" ++ (uenc $ deparen item))
-    let res = parseResp parser req
+search Stewbot{sess,exclude} item' = do
+    let item = normalize item'
+    req <- S.get sess (insta $ "v3/containers/wegmans/search_v3/" ++ uenc item)
+
+    -- filter out excluded items
+    let res = filter ((`notElem` M.findWithDefault [] item exclude) . search_id) $
+                parseResp parser req
 
     -- try to guess the correct units (based on the naive heuristic -- maybe improve?)
     let guess = join $ fst <$> (M.lookupMax $ foldr f M.empty res)
             where f x acc = M.insertWith (+) (units <$> hush (efficiency x)) 1 acc
+
     -- now find the most efficient item with those units
     let minid = search_id $ minimumBy (compare `on` safeEfficiency) res
             where safeEfficiency SearchResult{efficiency} = case efficiency of
@@ -187,7 +202,9 @@ search Stewbot{sess} item = do
 
 render :: String -> SearchResult -> String
 render minid SearchResult{search_id,name,size,image,price,prev,feat,efficiency} = concat
-    [ "<div class='item"++(best " chosen")++"' data-id='"++search_id++"'>"
+    [ "<div class='item"
+    , best " chosen"
+    , "' data-id='"++search_id++"'>"
     , if prev then "<div class='prev'>&nbsp;</div>" else ""
     , if feat then "<div class='feat'>&nbsp;</div>" else ""
     , "<div class='imgcont'>"
