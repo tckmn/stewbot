@@ -6,25 +6,29 @@ module Stewbot (
     makeBot, addItems, runSearch
 ) where
 
-import Control.Lens hiding ((.=))
 import Control.Monad
-import Data.Aeson
-import Data.Aeson.Types
 import Data.Function
 import Data.List
 import Data.Maybe
-import Data.Quantities
-import Network.HTTP.Client.TLS (tlsManagerSettings)
-import Network.HTTP.Types (urlEncode)
-import Network.Wreq
-import Numeric
 import System.Directory (doesFileExist)
 import qualified Data.ByteString as B hiding (pack, unpack)
 import qualified Data.ByteString.Char8 as B (pack, unpack)
 import qualified Data.ByteString.Internal as B (c2w, w2c)
 import qualified Data.ByteString.Lazy as BL hiding (pack, unpack)
 import qualified Data.ByteString.Lazy.Char8 as BL (pack, unpack)
-import qualified Data.Map.Strict as M
+import qualified Data.Text as T
+import qualified Data.Text.Encoding as T (encodeUtf8)
+import qualified Data.Text.Lazy as TL
+import qualified Data.Text.Lazy.Encoding as TL (encodeUtf8)
+
+import Control.Lens hiding ((.=))
+import Data.Aeson
+import Data.Aeson.Types
+import Data.Quantities
+import Network.HTTP.Client.TLS (tlsManagerSettings)
+import Network.HTTP.Types (urlEncode)
+import Network.Wreq
+import Numeric
 import qualified Network.Wreq.Session as S
 
 insta = ("https://www.instacart.com/" ++)

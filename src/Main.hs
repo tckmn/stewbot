@@ -2,6 +2,21 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE QuasiQuotes #-}
 
+import Control.Monad
+import Data.Function
+import Data.List
+import Data.Maybe
+import System.Directory (doesFileExist)
+import qualified Data.ByteString as B hiding (pack, unpack)
+import qualified Data.ByteString.Char8 as B (pack, unpack)
+import qualified Data.ByteString.Internal as B (c2w, w2c)
+import qualified Data.ByteString.Lazy as BL hiding (pack, unpack)
+import qualified Data.ByteString.Lazy.Char8 as BL (pack, unpack)
+import qualified Data.Text as T
+import qualified Data.Text.Encoding as T (encodeUtf8)
+import qualified Data.Text.Lazy as TL
+import qualified Data.Text.Lazy.Encoding as TL (encodeUtf8)
+
 import Stewbot
 import System.Process
 
@@ -10,25 +25,13 @@ import Network.Wai.Handler.Warp
 import Network.HTTP.Types (status200, status404)
 import Text.Hamlet
 import Text.Blaze.Html.Renderer.Text (renderHtml)
-import Data.Text.Lazy.Encoding (encodeUtf8)
-import System.Directory (doesFileExist)
-import Data.List
-import Control.Monad
-
-import qualified Data.Text as T
-import qualified Data.Text.Lazy as TL
-import qualified Data.ByteString as B hiding (pack, unpack)
-import qualified Data.ByteString.Char8 as B (pack, unpack)
-import qualified Data.ByteString.Internal as B (c2w, w2c)
-import qualified Data.ByteString.Lazy as BL hiding (pack, unpack)
-import qualified Data.ByteString.Lazy.Char8 as BL (pack, unpack)
 
 main = makeBot >>= run 3000 . app
 
 resp ct = responseLBS status200 [("Content-Type", ct)]
 
 respHtml :: Html -> Response
-respHtml = resp "text/html" . encodeUtf8 . renderHtml
+respHtml = resp "text/html" . TL.encodeUtf8 . renderHtml
 
 notfound :: Response
 notfound = responseLBS status404 [("Content-Type", "text/plain")] "not found"
