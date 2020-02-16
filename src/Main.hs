@@ -11,31 +11,59 @@ import Network.HTTP.Types (status200, status404)
 import Text.Hamlet
 import Text.Blaze.Html.Renderer.Text (renderHtml)
 import Data.Text.Lazy.Encoding (encodeUtf8)
+import System.Directory (doesFileExist)
+import Data.List
+import Control.Monad
+
+import qualified Data.Text as T
+import qualified Data.Text.Lazy as TL
+import qualified Data.ByteString as B hiding (pack, unpack)
+import qualified Data.ByteString.Char8 as B (pack, unpack)
+import qualified Data.ByteString.Internal as B (c2w, w2c)
+import qualified Data.ByteString.Lazy as BL hiding (pack, unpack)
+import qualified Data.ByteString.Lazy.Char8 as BL (pack, unpack)
 
 main = makeBot >>= run 3000 . app
 
-resp :: Html -> Response
-resp = responseLBS status200 [("Content-Type", "text/html")] . encodeUtf8 . renderHtml
+resp ct = responseLBS status200 [("Content-Type", ct)]
+
+respHtml :: Html -> Response
+respHtml = resp "text/html" . encodeUtf8 . renderHtml
 
 notfound :: Response
 notfound = responseLBS status404 [("Content-Type", "text/plain")] "not found"
 
 headContent = [shamlet|
     <title>Stewbot
-    <meta charset='utf-8'>
+    <meta charset=utf-8>
+    <link rel=stylesheet href=static/main.css>
     |]
 
 header = [shamlet|
-    <p>HEADER
+    <header>
+        <a href=/>home
+        <a href=/search>search
     |]
 
-app bot req respond = respond $
-    case requestMethod req of
-      "GET"  -> case pathInfo req of
-                  [] -> resp $(shamletFile "html/home.hamlet")
-                  _ -> notfound
-      "POST" -> case pathInfo req of
-                  _ -> notfound
+app :: Stewbot -> Application
+app bot req respond = case liftM2 (,) requestMethod pathInfo req of
+
+    ("GET", [])         -> respond $ respHtml $(shamletFile "html/home.hamlet")
+    ("GET", ["search"]) -> respond $ respHtml $(shamletFile "html/search.hamlet")
+
+    ("GET", ["static", path]) -> do
+        let fname = "static/" ++ T.unpack path
+        let ct = guessCt fname
+        exists <- doesFileExist fname
+        if exists then BL.readFile fname >>= respond . resp ct else respond notfound
+
+    _ -> respond notfound
+    where guessCt fname
+            | ".html" `isSuffixOf` fname = "text/html"
+            | ".css"  `isSuffixOf` fname = "text/css"
+            | ".js"   `isSuffixOf` fname = "application/javascript"
+            | ".png"  `isSuffixOf` fname = "image/png"
+            | otherwise                  = "text/plain"
 
 -- oldstuffs
 

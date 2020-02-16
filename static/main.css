@@ -1,0 +1,7 @@
+html,body { background-color: #000; color: #d8d8d8; margin: 0; }
+header { background-color: #111; border-bottom: 1px dotted #222; padding: 8px; }
+main { max-width: 800px; margin: 0 auto; padding: 8px; }
+textarea,button,input { background-color: #111; border: 1px solid #222; color: #d8d8d8; border-radius: 3px; }
+a, header a:visited { color: #7cafc2; }
+a:visited { color: #ba8baf; }
+header a { padding: 0 10px; }

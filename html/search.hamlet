@@ -1,0 +1,12 @@
+!!!
+<html>
+    <head>
+        ^{headContent}
+        <style>
+            textarea#searcharea { display: block; width: 100%; margin-bottom: 1em; }
+    <body>
+        ^{header}
+        <main>
+            <h1>perform a search
+            <textarea #searcharea rows=20>
+            <button #submit>submit

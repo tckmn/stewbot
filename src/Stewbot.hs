@@ -2,7 +2,8 @@
 {-# LANGUAGE NamedFieldPuns #-}
 
 module Stewbot (
-    makeBot, addItems, runSearch, Item(Item), Replacement(..)
+    Stewbot(..), Item(..), Replacement(..),
+    makeBot, addItems, runSearch
 ) where
 
 import Control.Lens hiding ((.=))

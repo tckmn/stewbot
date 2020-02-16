@@ -4,4 +4,5 @@
         ^{headContent}
     <body>
         ^{header}
-        <p>hi
+        <main>
+            <h1>history</h1>
