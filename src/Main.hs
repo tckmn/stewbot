@@ -6,7 +6,7 @@ import Control.Monad
 import Data.Function
 import Data.List
 import Data.Maybe
-import System.Directory (doesFileExist)
+import System.Directory (doesFileExist, listDirectory)
 import qualified Data.ByteString as B hiding (pack, unpack)
 import qualified Data.ByteString.Char8 as B (pack, unpack)
 import qualified Data.ByteString.Internal as B (c2w, w2c)
@@ -55,7 +55,9 @@ header = [shamlet|
 app :: Stewbot -> Application
 app bot req respond = case liftM2 (,) requestMethod pathInfo req of
 
-    ("GET", [])         -> respond $ respHtml $(shamletFile "html/home.hamlet")
+    ("GET", []) -> getHistory >>= \history ->
+        respond $ respHtml $(shamletFile "html/home.hamlet")
+
     ("GET", ["search"]) -> respond $ respHtml $(shamletFile "html/search.hamlet")
 
     ("GET", path@("static":_)) -> do

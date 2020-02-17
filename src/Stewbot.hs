@@ -1,16 +1,18 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE NamedFieldPuns #-}
 
 module Stewbot (
     Stewbot(..), Item(..), Replacement(..),
-    makeBot, addItems, runSearch, getProgress
+    makeBot, addItems, runSearch, getProgress, getHistory
 ) where
 
 import Control.Monad
 import Data.Function
 import Data.List
 import Data.Maybe
-import System.Directory (doesFileExist)
+import System.Directory (doesFileExist, listDirectory)
 import qualified Data.ByteString as B hiding (pack, unpack)
 import qualified Data.ByteString.Char8 as B (pack, unpack)
 import qualified Data.ByteString.Internal as B (c2w, w2c)
@@ -32,9 +34,12 @@ import Network.HTTP.Client.TLS (tlsManagerSettings)
 import Network.HTTP.Types (urlEncode)
 import Network.Wreq
 import Numeric
+import Text.Hamlet
+import Text.Blaze
 import qualified Network.Wreq.Session as S
 
 insta = ("https://www.instacart.com/" ++)
+searchdir = "static/searches"
 uenc = B.unpack . urlEncode False . B.pack
 readData      = readFile      . ("data/"++)
 readDataBL    = BL.readFile   . ("data/"++)
@@ -185,7 +190,7 @@ runSearch :: Stewbot -> BL.ByteString -> IO (BL.ByteString)
 runSearch bot list = do
     fdata <- concat <$> sequence [readFile "head.html", body, pure "</main></body></html>"]
     fname <- formatTime defaultTimeLocale "%F_%T" <$> getZonedTime
-    let fname' = "static/searches/"++fname++".html"
+    let fname' = searchdir++"/"++fname++".html"
     writeFile fname' fdata
     return $ BL.pack fname'
         where body = fmap concat . mapM (search bot) . zip [0..] . lines $ BL.unpack list
@@ -257,3 +262,9 @@ getProgress :: IO (BL.ByteString)
 getProgress = do
     exists <- doesFileExist "progress"
     if exists then BL.readFile "progress" else mempty
+
+getHistory :: IO (Html)
+getHistory = (mconcat . map f . sort) <$> listDirectory searchdir
+    where f x = let x' = searchdir++"/"++x in [shamlet|
+        <li>
+            <a href=#{x'}>#{x}|]

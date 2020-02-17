@@ -5,20 +5,24 @@ window.addEventListener('load', function() {
         // disable ourselves
         submit.disabled = true;
 
+        // obtain the data
+        var val = document.getElementById('searcharea').value.replace(/\n+/, '\n').replace(/\n$/, ''),
+            nitems = val.split('\n').length;
+
         // send the request
         var xhr = new XMLHttpRequest();
         xhr.open('POST', '/search', true);
         xhr.onload = function() {
-            console.log(this.responseText);
+            window.location.href = '/'+this.responseText;
         };
-        xhr.send(document.getElementById('searcharea').value);
+        xhr.send(val);
 
         // give some live updates
         var timeout = 500, fn = function() {
             var progress = new XMLHttpRequest();
             progress.open('POST', '/progress', true);
             progress.onload = function() {
-                console.log(this.responseText);
+                submit.textContent = (this.responseText+1)+' of '+nitems+'...';
                 setTimeout(fn, timeout);
             };
             progress.send();
