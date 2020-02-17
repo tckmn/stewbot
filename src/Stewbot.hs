@@ -282,7 +282,7 @@ getProgress = do
     if exists then BL.readFile "progress" else mempty
 
 getHistory :: IO (Html)
-getHistory = (mconcat . map f . sort) <$> listDirectory searchdir
+getHistory = (mconcat . map f . reverse . sort) <$> listDirectory searchdir
     where f x = let x' = searchdir++"/"++x in [shamlet|
         <li>
             <a href=#{x'}>#{x}|]
