@@ -1,8 +1,15 @@
 html,body { background-color: #000; color: #d8d8d8; margin: 0; }
 header { background-color: #111; border-bottom: 1px dotted #222; padding: 8px; }
 main { max-width: 800px; margin: 0 auto; padding: 8px; }
+
 textarea,button,input { background-color: #111; border: 1px solid #222; color: #d8d8d8; border-radius: 3px; }
 button:disabled { color: #555; border: none; }
+
 a, header a:visited { color: #7cafc2; }
 a:visited { color: #ba8baf; }
 header a { padding: 0 10px; }
+
+div#overlay { position: absolute; background-color: rgba(0,0,0,0.7); left: 0; right: 0; top: 0; bottom: 0; }
+div#overlay > div { position: absolute; margin: auto; padding: 1em; left: 0; right: 0; top: 0; bottom: 0; width: 300px; height: 200px; background-color: #000; border: 3px solid #444; }
+div#overlay > div.closable { cursor: pointer; }
+div#overlay > div.closable > p { font-style: italic; }

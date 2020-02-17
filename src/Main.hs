@@ -44,6 +44,7 @@ headContent = [shamlet|
     <title>Stewbot
     <meta charset=utf-8>
     <link rel=stylesheet href=/static/main.css>
+    <script src=/static/main.js>
     |]
 
 header = [shamlet|
@@ -68,6 +69,8 @@ app bot req respond = case liftM2 (,) requestMethod pathInfo req of
 
     ("POST", ["search"]) -> strictRequestBody req >>= runSearch bot >>= respond . respPlain
     ("POST", ["progress"]) -> getProgress >>= respond . respPlain
+    ("POST", ["save", src]) -> strictRequestBody req >>= saveSearch bot src >> respond (respPlain "")
+    ("POST", ["add", src]) -> addSave bot src >> respond (respPlain "")
 
     _ -> respond notfound
     where guessCt fname

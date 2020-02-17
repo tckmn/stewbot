@@ -2,6 +2,7 @@
 <html lang=en>
     <head>
         ^{headContent}
+        <script src=/static/home.js>
     <body>
         ^{header}
         <main>

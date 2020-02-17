@@ -5,7 +5,7 @@
 
 module Stewbot (
     Stewbot(..), Item(..), Replacement(..),
-    makeBot, addItems, runSearch, getProgress, getHistory
+    makeBot, addItems, runSearch, getProgress, getHistory, saveSearch, addSave
 ) where
 
 import Control.Monad
@@ -41,6 +41,7 @@ import Text.Blaze.Html.Renderer.Text (renderHtml)
 import qualified Network.Wreq.Session as S
 
 insta = ("https://www.instacart.com/" ++)
+timestamp = formatTime defaultTimeLocale "%F_%T" <$> getZonedTime
 searchdir = "static/searches"
 uenc = B.unpack . urlEncode False . B.pack
 readData      = readFile      . ("data/"++)
@@ -52,6 +53,7 @@ headContent = [shamlet|
     <title>Stewbot
     <meta charset=utf-8>
     <link rel=stylesheet href=/static/main.css>
+    <script src=/static/main.js>
     |]
 
 -- removes parentheses and excess spaces and lowercases
@@ -74,7 +76,7 @@ data Stewbot = Stewbot { sess :: S.Session
                        } deriving Show
 
 data Item = Item { item_id :: String
-                 , quantity :: Int
+                 , quantity :: Float
                  , repl :: Replacement
                  } deriving Show
 
@@ -200,7 +202,7 @@ runSearch bot list = do
     body <- fmap mconcat . mapM (search bot) . zip [0..] . lines $ BL.unpack list
 
     -- generate a file name
-    fname <- formatTime defaultTimeLocale "%F_%T" <$> getZonedTime
+    fname <- timestamp
     let fname' = searchdir++"/"++fname++".html"
 
     -- output the data
@@ -213,8 +215,12 @@ runSearch bot list = do
     return $ BL.pack fname'
 
 search :: Stewbot -> (Integer,String) -> IO (Html)
-search Stewbot{sess,exclude,choice} (idx,item') = do
+search Stewbot{sess,exclude,choice} (idx,line) = do
+    let (item', desc') = break (=='\t') line
+
     let item = normalize item'
+        desc = unwords . words $ desc'
+
     req <- S.get sess (insta $ "v3/containers/wegmans/search_v3/" ++ uenc item)
 
     -- report that we got this item
@@ -239,6 +245,10 @@ search Stewbot{sess,exclude,choice} (idx,item') = do
     return [shamlet|
         <div .items>
             <h2>#{item}
+            <p .desc>
+                <span>#{desc}
+                |
+                <span .quant>
             <div .itemswrap>
                 ^{mconcat $ render minid (M.lookup item choice) <$> res}
     |]
@@ -283,7 +293,28 @@ getProgress = do
     if exists then BL.readFile "progress" else mempty
 
 getHistory :: IO (Html)
-getHistory = (mconcat . map f . reverse . sort) <$> listDirectory searchdir
-    where f x = let x' = searchdir++"/"++x in [shamlet|
+getHistory = do
+    saves <- reverse . sort <$> listDirectory "saves"
+    (mconcat . map (f saves) . reverse . sort) <$> listDirectory searchdir
+    where f saves fname = let x = reverse . drop 5 . reverse $ fname
+                              x' = searchdir++"/"++fname in [shamlet|
         <li>
-            <a href=#{x'}>#{x}|]
+            <a href=#{x'}>#{x}
+            $case filter (isPrefixOf x) saves
+                $of []
+                $of s
+                    <ul>
+                        $forall save <- s
+                            <li>
+                                <a .add href=/add/#{save}>#{save}|]
+
+saveSearch :: Stewbot -> T.Text -> BL.ByteString -> IO ()
+saveSearch bot src saveData = timestamp >>= \fname ->
+    BL.writeFile ("saves/"++T.unpack src++":"++fname) saveData
+
+addSave :: Stewbot -> T.Text -> IO (Response BL.ByteString)
+addSave bot name = do
+    saveData <- readFile $ "saves/"++T.unpack name
+    addItems bot (map (itemify . words) . lines $ saveData)
+        where itemify [x,y] = Item x (read y) Best
+              itemify _ = error "what"

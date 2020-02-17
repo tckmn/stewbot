@@ -33,6 +33,33 @@ window.addEventListener('load', function() {
         p.scrollTo(0, pos);
     };
 
+    var go = function() {
+        var bad = false, data = Array.from(document.querySelectorAll('.chosen'))
+            .map(function(x) {
+                var id = x.dataset.id,
+                    quant = x.parentNode.parentNode.querySelector('.quant').textContent;
+                if (!bad && quant === '') showModal('at least 1 item is missing quantity', bad=true);
+                else if (quant === '0') return '';
+                else return id + ' ' + quant;
+            }).join('\n').replace(/\n+/g, '\n');
+        if (bad) return;
+
+        showModal('saving order...', false);
+
+        var xhr = new XMLHttpRequest();
+        xhr.open('POST', '/save'+location.pathname.match(/.\d[^.]*/)[0], true);
+        xhr.onload = function() {
+            showModal('done!', true);
+        };
+        xhr.send(data);
+    };
+
+    var typeQuant = function(k) {
+        var quant = cols[activeIdx].querySelector('.quant');
+        if (k == 'Backspace') quant.textContent = quant.textContent.slice(0, -1);
+        else quant.textContent = quant.textContent + k;
+    };
+
     window.addEventListener('keydown', function(e) {
         switch (e.key) {
             case 'ArrowLeft':
@@ -59,14 +86,21 @@ window.addEventListener('load', function() {
             case 'G':
                 tryMove(active.parentNode.lastChild);
                 break;
-            case 'Backspace':
             case 'Delete':
             case 'd':
             case 'x':
                 // TODO tell the server to delet
                 break;
             case 'Escape':
+            case 'Enter':
                 // TODO e x p a n d the current item
+                break;
+            case '`':
+                go();
+                break;
+            case '0': case '1': case '2': case '3': case '4': case 'Backspace':
+            case '5': case '6': case '7': case '8': case '9': case '.':
+                typeQuant(e.key);
                 break;
             default: return;
         }
