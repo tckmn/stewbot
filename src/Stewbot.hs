@@ -27,6 +27,7 @@ import qualified Data.Text.Lazy.Encoding as TL (encodeUtf8)
 import Control.Lens hiding ((.=))
 import Data.Aeson
 import Data.Aeson.Types
+import Data.Char
 import Data.Quantities
 import Data.Time.Format
 import Data.Time.LocalTime
@@ -53,13 +54,13 @@ headContent = [shamlet|
     <link rel=stylesheet href=/static/main.css>
     |]
 
--- removes parentheses and excess spaces
+-- removes parentheses and excess spaces and lowercases
 normalize :: String -> String
 normalize = unwords . words . flip helper 0
     where helper []      _ = []
           helper ('(':s) n = helper s (n+1)
           helper (')':s) n = helper s (n-1)
-          helper (c:s)   0 = c:helper s 0
+          helper (c:s)   0 = (toLower c):helper s 0
           helper (c:s)   n = helper s n
 
 hush :: Either a b -> Maybe b
