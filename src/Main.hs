@@ -6,7 +6,7 @@ import Control.Monad
 import Data.Function
 import Data.List
 import Data.Maybe
-import System.Directory (doesFileExist, listDirectory)
+import System.Directory
 import qualified Data.ByteString as B hiding (pack, unpack)
 import qualified Data.ByteString.Char8 as B (pack, unpack)
 import qualified Data.ByteString.Internal as B (c2w, w2c)
@@ -43,7 +43,7 @@ notfound = responseLBS status404 [("Content-Type", "text/plain")] "not found"
 headContent = [shamlet|
     <title>Stewbot
     <meta charset=utf-8>
-    <link rel=stylesheet href=static/main.css>
+    <link rel=stylesheet href=/static/main.css>
     |]
 
 header = [shamlet|

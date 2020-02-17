@@ -1,0 +1,9 @@
+!!!
+<html lang=en>
+    <head>
+        ^{headContent}
+        <link rel=stylesheet href=/static/results.css>
+        <script src=/static/results.js>
+    <body>
+        <main>
+            ^{body}

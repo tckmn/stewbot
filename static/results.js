@@ -1,35 +1,3 @@
-<!DOCTYPE html>
-<html lang='en'>
-    <head>
-        <title>review your order</title>
-        <meta charset='utf-8'>
-<style>
-
-html,body { margin: 0; overflow: hidden; font: 10pt sans-serif; }
-main { padding: 0; white-space: nowrap; width: 100%; height: 100vh; }
-img { width: 64px; }
-p { margin: 0; }
-h2 { font-size: 13pt; text-align: center; }
-div.items { display: inline-flex; flex-direction: column; vertical-align: top; padding-right: 10px; white-space: normal; height: 100vh; }
-div.items > div { overflow-y: scroll; }
-div.item { padding: 10px; width: 269px; position: relative; }
-div.item:nth-of-type(2n) { background-color: #111; }
-div.item:nth-of-type(2n+1) { background-color: #222; }
-div.item.chosen { background-color: #040; }
-div.item.active { background-color: #070; border: 2px solid red; padding: 8px; }
-div.item > div { display: inline-block; vertical-align: middle; }
-div.imgcont { width: 64px; text-align: center; }
-div.namcont { width: 200px; margin-left: 5px; }
-div.effcont { width: 269px; }
-div.prev, div.feat { width: 15px; height: 15px; border-radius: 15px; position: absolute; right: 5px; top: 5px; }
-div.item.active > div.prev, div.item.active > div.feat { right: 3px; top: 3px; }
-div.prev { background-color: #0f0; }
-div.feat { background-color: #f00; }
-span.tag { float: right; color: #0f0; background-color: #040; padding: 0 5px; margin: 0 5px; }
-
-</style>
-<script>
-
 window.addEventListener('load', function() {
 
     var active = document.querySelector('div.chosen'),
@@ -106,8 +74,3 @@ window.addEventListener('load', function() {
     });
 
 });
-
-</script>
-    </head>
-    <body>
-        <main>

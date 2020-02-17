@@ -12,7 +12,7 @@ import Control.Monad
 import Data.Function
 import Data.List
 import Data.Maybe
-import System.Directory (doesFileExist, listDirectory)
+import System.Directory
 import qualified Data.ByteString as B hiding (pack, unpack)
 import qualified Data.ByteString.Char8 as B (pack, unpack)
 import qualified Data.ByteString.Internal as B (c2w, w2c)
@@ -36,6 +36,7 @@ import Network.Wreq
 import Numeric
 import Text.Hamlet
 import Text.Blaze
+import Text.Blaze.Html.Renderer.Text (renderHtml)
 import qualified Network.Wreq.Session as S
 
 insta = ("https://www.instacart.com/" ++)
@@ -45,6 +46,12 @@ readData      = readFile      . ("data/"++)
 readDataBL    = BL.readFile   . ("data/"++)
 writeData     = writeFile     . ("data/"++)
 doesDataExist = doesFileExist . ("data/"++)
+
+headContent = [shamlet|
+    <title>Stewbot
+    <meta charset=utf-8>
+    <link rel=stylesheet href=/static/main.css>
+    |]
 
 -- removes parentheses and excess spaces
 normalize :: String -> String
@@ -188,14 +195,23 @@ addItems Stewbot{sess,cid} items = do
 
 runSearch :: Stewbot -> BL.ByteString -> IO (BL.ByteString)
 runSearch bot list = do
-    fdata <- concat <$> sequence [readFile "head.html", body, pure "</main></body></html>"]
+    -- perform the search
+    body <- fmap mconcat . mapM (search bot) . zip [0..] . lines $ BL.unpack list
+
+    -- generate a file name
     fname <- formatTime defaultTimeLocale "%F_%T" <$> getZonedTime
     let fname' = searchdir++"/"++fname++".html"
-    writeFile fname' fdata
-    return $ BL.pack fname'
-        where body = fmap concat . mapM (search bot) . zip [0..] . lines $ BL.unpack list
 
-search :: Stewbot -> (Integer,String) -> IO (String)
+    -- output the data
+    writeFile fname' . TL.unpack $ renderHtml $(shamletFile "html/results.hamlet")
+
+    -- remove the progress file
+    exists <- doesFileExist "progress"
+    when exists $ removeFile "progress"
+
+    return $ BL.pack fname'
+
+search :: Stewbot -> (Integer,String) -> IO (Html)
 search Stewbot{sess,exclude,choice} (idx,item') = do
     let item = normalize item'
     req <- S.get sess (insta $ "v3/containers/wegmans/search_v3/" ++ uenc item)
@@ -219,44 +235,46 @@ search Stewbot{sess,exclude,choice} (idx,item') = do
                     Left _ -> 1/0
                     Right val -> if or $ (units val ==) <$> guess then magnitude val else 1/0
 
-    return $ concat
-        [ "<div class='items'>"
-        , "<h2>"++item++"</h2>"
-        , "<div class='itemswrap'>"
-        , concat $ render minid (M.lookup item choice) <$> res
-        , "</div></div>"
-        ]
+    return [shamlet|
+        <div .items>
+            <h2>#{item}
+            <div .itemswrap>
+                ^{mconcat $ render minid (M.lookup item choice) <$> res}
+    |]
+
     where parser x = (x.:"container") >>= (.:"modules")
                  >>= (filterM (\x -> (isPrefixOf "search_result_set") <$> x.:"id"))
                  <&> head
                  >>= (.:"data") >>= (.:"items") :: Parser [SearchResult]
 
-render :: String -> Maybe String -> SearchResult -> String
-render minid choid SearchResult{search_id,name,size,image,price,prev,feat,efficiency} = concat
-    [ "<div class='item"
-    , good " chosen"
-    , "' data-id='"++search_id++"'>"
-    , if' prev "<div class='prev'>&nbsp;</div>"
-    , if' feat "<div class='feat'>&nbsp;</div>"
-    , "<div class='imgcont'>"
-    , "<p>"++price++"</p>"
-    , "<p>"++size++"</p>"
-    , "<img src='"++image++"'>"
-    , "</div>"
-    , "<div class='namcont'>"++name++"</div>"
-    , "<div class='effcont'>"
-    , case efficiency of
-        Left err  -> show err
-        Right val -> showEFloat (Just 2) (magnitude val) (concat . words . show $ units val)
-    , best "<span class='tag'>best</span>"
-    , chos "<span class='tag'>chosen</span>"
-    , "</div></div>"
-    ]
-        where if' True = id
-              if' _    = pure ""
-              best = if' $ search_id == minid
-              chos = if' $ or ((search_id ==) <$> choid)
-              good = if' $ search_id == fromMaybe minid choid
+render :: String -> Maybe String -> SearchResult -> Html
+render minid choid SearchResult{search_id,name,size,image,price,prev,feat,efficiency} = [shamlet|
+    $newline never
+    <div .item :good:.chosen data-id=#{search_id}>
+        $if prev
+            <div .prev>&nbsp;
+        $if feat
+            <div .feat>&nbsp;
+        <div .imgcont>
+            <p>#{price}
+            <p>#{size}
+            <img src=#{image}>
+        <div .namcont>
+            #{name}
+        <div .effcont>
+            $case efficiency
+                $of Left err
+                    #{show err}
+                $of Right val
+                    #{showVal val}
+            $if best
+                <span .tag>best
+            $if chos
+                <span .tag>chosen
+    |] where best = search_id == minid
+             chos = or ((search_id ==) <$> choid)
+             good = search_id == fromMaybe minid choid
+             showVal val = showEFloat (Just 2) (magnitude val) (concat . words . show $ units val)
 
 getProgress :: IO (BL.ByteString)
 getProgress = do
