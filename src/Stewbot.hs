@@ -3,7 +3,7 @@
 
 module Stewbot (
     Stewbot(..), Item(..), Replacement(..),
-    makeBot, addItems, runSearch
+    makeBot, addItems, runSearch, getProgress
 ) where
 
 import Control.Monad
@@ -16,6 +16,7 @@ import qualified Data.ByteString.Char8 as B (pack, unpack)
 import qualified Data.ByteString.Internal as B (c2w, w2c)
 import qualified Data.ByteString.Lazy as BL hiding (pack, unpack)
 import qualified Data.ByteString.Lazy.Char8 as BL (pack, unpack)
+import qualified Data.Map.Strict as M
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T (encodeUtf8)
 import qualified Data.Text.Lazy as TL
@@ -25,6 +26,8 @@ import Control.Lens hiding ((.=))
 import Data.Aeson
 import Data.Aeson.Types
 import Data.Quantities
+import Data.Time.Format
+import Data.Time.LocalTime
 import Network.HTTP.Client.TLS (tlsManagerSettings)
 import Network.HTTP.Types (urlEncode)
 import Network.Wreq
@@ -178,15 +181,24 @@ addItems Stewbot{sess,cid} items = do
         sess (insta $ "v3/carts/" ++ cid ++ "/update_items")
         (BL.concat ["{\"items\":",encode items,"}"])
 
-runSearch :: Stewbot -> String -> IO (String)
-runSearch bot fname =
-    concat <$> sequence [readFile "head.html", body, pure "</main></body></html>"]
-    where body = fmap concat . join $ (mapM (search bot) . lines) <$> readData fname
+runSearch :: Stewbot -> BL.ByteString -> IO (BL.ByteString)
+runSearch bot list = do
+    fdata <- concat <$> sequence [readFile "head.html", body, pure "</main></body></html>"]
+    fname <- formatTime defaultTimeLocale "%F_%T" <$> getZonedTime
+    let fname' = "static/searches/"++fname++".html"
+    writeFile fname' fdata
+    return $ BL.pack fname'
+        where body = fmap concat . mapM (search bot) . zip [0..] . lines $ BL.unpack list
 
-search :: Stewbot -> String -> IO (String)
-search Stewbot{sess,exclude,choice} item' = do
+search :: Stewbot -> (Integer,String) -> IO (String)
+search Stewbot{sess,exclude,choice} (idx,item') = do
     let item = normalize item'
     req <- S.get sess (insta $ "v3/containers/wegmans/search_v3/" ++ uenc item)
+
+    -- report that we got this item
+    -- (lol this means we can't do multiple searches simultaneously but whatever)
+    -- FIXME i guess
+    writeFile "progress" $ show idx
 
     -- filter out excluded items
     let res = filter ((`notElem` M.findWithDefault [] item exclude) . search_id) $
@@ -240,3 +252,8 @@ render minid choid SearchResult{search_id,name,size,image,price,prev,feat,effici
               best = if' $ search_id == minid
               chos = if' $ or ((search_id ==) <$> choid)
               good = if' $ search_id == fromMaybe minid choid
+
+getProgress :: IO (BL.ByteString)
+getProgress = do
+    exists <- doesFileExist "progress"
+    if exists then BL.readFile "progress" else mempty

@@ -12,6 +12,7 @@ import qualified Data.ByteString.Char8 as B (pack, unpack)
 import qualified Data.ByteString.Internal as B (c2w, w2c)
 import qualified Data.ByteString.Lazy as BL hiding (pack, unpack)
 import qualified Data.ByteString.Lazy.Char8 as BL (pack, unpack)
+import qualified Data.Map.Strict as M
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T (encodeUtf8)
 import qualified Data.Text.Lazy as TL
@@ -32,6 +33,9 @@ resp ct = responseLBS status200 [("Content-Type", ct)]
 
 respHtml :: Html -> Response
 respHtml = resp "text/html" . TL.encodeUtf8 . renderHtml
+
+respPlain :: BL.ByteString -> Response
+respPlain = resp "text/plain"
 
 notfound :: Response
 notfound = responseLBS status404 [("Content-Type", "text/plain")] "not found"
@@ -54,11 +58,14 @@ app bot req respond = case liftM2 (,) requestMethod pathInfo req of
     ("GET", [])         -> respond $ respHtml $(shamletFile "html/home.hamlet")
     ("GET", ["search"]) -> respond $ respHtml $(shamletFile "html/search.hamlet")
 
-    ("GET", ["static", path]) -> do
-        let fname = "static/" ++ T.unpack path
+    ("GET", path@("static":_)) -> do
+        let fname = T.unpack $ T.intercalate "/" path
         let ct = guessCt fname
         exists <- doesFileExist fname
         if exists then BL.readFile fname >>= respond . resp ct else respond notfound
+
+    ("POST", ["search"]) -> strictRequestBody req >>= runSearch bot >>= respond . respPlain
+    ("POST", ["progress"]) -> getProgress >>= respond . respPlain
 
     _ -> respond notfound
     where guessCt fname
@@ -69,11 +76,6 @@ app bot req respond = case liftM2 (,) requestMethod pathInfo req of
             | otherwise                  = "text/plain"
 
 -- oldstuffs
-
-oldmain = do
-    bot <- makeBot
-    runSearch bot "list" >>= writeFile "out.html"
-    callCommand "firefox out.html"
 
 oldoldmain = do
     bot <- makeBot

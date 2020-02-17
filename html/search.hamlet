@@ -4,6 +4,7 @@
         ^{headContent}
         <style>
             textarea#searcharea { display: block; width: 100%; margin-bottom: 1em; }
+        <script src=static/search.js>
     <body>
         ^{header}
         <main>
