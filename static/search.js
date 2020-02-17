@@ -22,7 +22,7 @@ window.addEventListener('load', function() {
             var progress = new XMLHttpRequest();
             progress.open('POST', '/progress', true);
             progress.onload = function() {
-                submit.textContent = (this.responseText+1)+' of '+nitems+'...';
+                submit.textContent = (+this.responseText+1)+' of '+nitems+'...';
                 setTimeout(fn, timeout);
             };
             progress.send();
